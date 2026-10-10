@@ -1,0 +1,18 @@
+# Environments
+.env
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Database
+*.sqlite3
+*.db
+pgdata/
+
+# IDEs
+.vscode/
+.idea/
