@@ -1,10 +1,9 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from sqlmodel import SQLModel, create_engine
+from sqlmodel import SQLModel
 from app.config import settings
+from app.models.database import engine
 from app.models.schemas import AgentRun, AgentStep 
-
-engine = create_engine(settings.DATABASE_URL, echo=True)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
