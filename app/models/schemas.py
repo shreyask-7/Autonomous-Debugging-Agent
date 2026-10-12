@@ -44,3 +44,17 @@ class AgentStep(SQLModel, table = True):
 
   run: Optional["AgentRun"] = Relationship(back_populates="steps")
 
+class CreateRunRequests(SQLModel):
+  repo_path: str
+  issue_description: str
+
+class RunResponse(SQLModel):
+  id: UUID
+  repo_name: str
+  issue_description: str
+  status: RunStatus
+  iterations: int
+  created_at: datetime
+  completed_at: Optional[datetime] = None
+  
+

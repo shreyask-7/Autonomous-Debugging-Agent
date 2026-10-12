@@ -1,6 +1,7 @@
 import json
 import time
 import traceback
+import asyncio
 from datetime import datetime, timezone
 from typing import List, Dict, Any
 from google import genai
@@ -19,6 +20,7 @@ class AgentRuntime:
         self.registry = ToolRegistry(self.sandbox)
         self.db = db
         self.max_iterations = max_iterations
+        self.repo_path = repo_path
 
         self.run_record = AgentRun(
             repo_name=repo_path.split("/")[-1] if "/" in repo_path else repo_path.split("\\")[-1],
@@ -122,3 +124,14 @@ class AgentRuntime:
             "args": tool_args,
             "output": tool_output
         }
+
+    async def run_stream(self):
+        self.sandbox.start_container(self.repo_path)
+        try:
+            while self.step_count < self.max_iterations:
+                step_result = await asyncio.to_thread(self.step)
+                yield step_result
+                if step_result["status"] in ("finished", "error"):
+                    break
+        finally:
+            self.sandbox.stop_container()
