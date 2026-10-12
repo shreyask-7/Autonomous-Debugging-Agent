@@ -38,7 +38,7 @@ class ToolRegistry:
       "list_files": lambda args: self.list_files(args.get("directory", ".")),
       "read_file": lambda args: self.read_files(args.get("filepath", "")),
       "search_code": lambda args: self.search_code(args.get("pattern", "")),
-      "run_test": lambda args: self.run_tests(args.get("test_cmd", "python -m unittest")),
+      "run_tests": lambda args: self.run_tests(args.get("test_cmd", "python -m unittest")),
       "write_file": lambda args: self.write_file(args.get("filepath", ""), args.get("content", ""))
     }
 
