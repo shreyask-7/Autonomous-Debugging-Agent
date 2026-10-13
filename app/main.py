@@ -11,10 +11,24 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from sqlmodel import SQLModel, Session, select
 
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.zipkin.json import ZipkinExporter
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.sdk.resources import Resource
+
 from app.config import settings
 from app.models.database import engine, get_session
 from app.models.schemas import AgentRun, AgentStep, CreateRunRequests, RunResponse
 from app.engine.loop import AgentRuntime
+
+resource = Resource.create({
+  "service.name": "autonomous-debugger-api"
+})
+trace.set_tracer_provider(TracerProvider(resource=resource))
+zipkin_exporter = ZipkinExporter(endpoint="http://localhost:9411/api/v2/spans")
+trace.get_tracer_provider().add_span_processor(BatchSpanProcessor(zipkin_exporter))
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -24,6 +38,8 @@ async def lifespan(app: FastAPI):
   print("Shutting down...")
 
 app = FastAPI(title=settings.PROJECT_NAME, lifespan=lifespan)
+
+FastAPIInstrumentor.instrument_app(app)
 
 app.add_middleware(
   CORSMiddleware,
