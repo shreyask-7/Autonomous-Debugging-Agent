@@ -36,7 +36,16 @@ async def run_evaluation_suite():
       print(f"[*] Agent is running...")
 
       async for step in agent.run_stream():
-         if step.get("status") in ("finished", "error"):
+        if step.get("status") == "running":
+            print(f"\n--- Iteration ---")
+            print(f"THOUGHT: {step.get('thought')}")
+            print(f"ACTION: {step.get('tool')} {step.get('args')}")
+        elif step.get("status") == "error":
+            print(f"\n[!] ERROR: {step.get('error')}")
+            break
+        elif step.get("status") == "finished":
+            print(f"\n--- Final Decision ---")
+            print(f"THOUGHT: {step.get('thought')}")
             break
 
       if agent.run_record.status == RunStatus.SUCCESS:
@@ -51,22 +60,17 @@ async def run_evaluation_suite():
 
 def prepare_workspace(repo_url: str, commit_hash: str, workspace_dir: Path, setup_cmds: list):
     try:
-        # NEW: Handle local test directories
         if repo_url.startswith("local:"):
             source_dir = repo_url.replace("local:", "")
             if workspace_dir.exists():
                 shutil.rmtree(workspace_dir)
             shutil.copytree(source_dir, workspace_dir)
             print(f"    -> Copied local workspace from {source_dir}")
-            return # Skip the git commands
+            return
 
-        # Existing Git Logic
         if not workspace_dir.exists():
             print(f"    -> Cloning {repo_url}...")
             subprocess.run(["git", "clone", repo_url, str(workspace_dir)], check=True, capture_output=True, text=True)
-        
-        print(f"    -> Fetching exact commit {commit_hash}...")
-        subprocess.run(["git", "fetch", "origin", commit_hash], cwd=workspace_dir, check=True, capture_output=True, text=True)
         
         print(f"    -> Checking out commit {commit_hash}...")
         subprocess.run(["git", "checkout", "-f", commit_hash], cwd=workspace_dir, check=True, capture_output=True, text=True)

@@ -36,6 +36,7 @@ class AgentRuntime:
             {"role": "user", "content": bug_report}
         ]
         self.step_count = 0
+        self.action_history = []
 
     def _fail_run(self, error_message: str) -> Dict[str, Any]:
         self.run_record.status = RunStatus.FAILED
@@ -46,8 +47,8 @@ class AgentRuntime:
         
     def step(self) -> Dict[str, Any]:
         self.step_count += 1
-        if(self.step_count > self.max_iterations):
-            return self._fail_run("Max iterations reached. Agent loop terminated to prevent infinite execution.")
+        if self.step_count > self.max_iterations:
+            return self._fail_run(f"Budget exhausted: Reached maximum limit of {self.max_iterations} iterations without resolving the bug.")
         
         formatted_contents = [
             types.Content(role=m["role"], parts=[types.Part.from_text(text=m["content"])]) 
@@ -93,13 +94,21 @@ class AgentRuntime:
             self.db.commit()
             return {"status": "finished", "thought": thought, "summary": tool_args.get("summary", "")}
 
-        start_time = time.time()
-        try:
-            tool_output = self.registry.dispatch(tool_name, tool_args)
-        except Exception as e:
-            tool_output = f"SYSTEM EXCEPTION during tool execution:\n{traceback.format_exc()}"
-
-        duration_ms = int((time.time() - start_time) * 1000)
+        action_signature = f"{tool_name}:{json.dumps(tool_args, sort_keys=True)}"
+        
+        if action_signature in self.action_history:
+            tool_output = "SYSTEM ERROR: You just executed this exact action with these exact arguments. Re-evaluate your hypothesis and try a different approach. Do not repeat failed actions."
+            duration_ms = 0
+        else:
+            self.action_history.append(action_signature)
+            if tool_name == "write_file":
+                self.action_history.clear()
+            start_time = time.time()
+            try:
+                tool_output = self.registry.dispatch(tool_name, tool_args)
+            except Exception as e:
+                tool_output = f"SYSTEM EXCEPTION during tool execution:\n{traceback.format_exc()}"
+            duration_ms = int((time.time() - start_time) * 1000)
 
         observation = f"Tool '{tool_name}' executed.\nOutput:\n{tool_output}"
         self.messages.append({"role": "user", "content": observation})
@@ -128,7 +137,7 @@ class AgentRuntime:
     async def run_stream(self):
         self.sandbox.start_container(self.repo_path)
         try:
-            while self.step_count < self.max_iterations:
+            while True: 
                 step_result = await asyncio.to_thread(self.step)
                 yield step_result
                 if step_result["status"] in ("finished", "error"):

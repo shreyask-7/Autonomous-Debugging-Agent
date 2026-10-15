@@ -1,11 +1,11 @@
 [
   {
-    "task_id": "local-test-01",
+    "task_id": "local-ecommerce-bug",
     "repo_url": "local:./tests/dummy_repo",
     "commit_hash": "N/A",
-    "issue_description": "The divide function in calculator.py throws a ZeroDivisionError. It should return None when dividing by zero.",
+    "issue_description": "The ShoppingCart checkout method calculates tax incorrectly when a discount code is applied. Tax should be calculated on the discounted subtotal, not the original subtotal.",
     "setup_commands": [],
-    "reproduction_test_cmd": "python -m unittest test_calculator.py",
-    "regression_test_cmd": "python -m unittest test_calculator.py"
+    "reproduction_test_cmd": "python -m unittest test_cart.py",
+    "regression_test_cmd": "python -m unittest test_cart.py"
   }
 ]
