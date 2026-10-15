@@ -26,7 +26,7 @@ class AgentRun(SQLModel, table = True):
   iterations: int = Field(default=0)
   created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
   completed_at: Optional[datetime] = None
-
+  benchmark_success: Optional[bool] = Field(default=None)
   steps: List["AgentStep"] = Relationship(back_populates="run")
 
 class AgentStep(SQLModel, table = True):
@@ -56,5 +56,5 @@ class RunResponse(SQLModel):
   iterations: int
   created_at: datetime
   completed_at: Optional[datetime] = None
-  
+
 
