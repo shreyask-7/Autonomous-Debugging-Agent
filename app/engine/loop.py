@@ -2,11 +2,16 @@ import json
 import time
 import traceback
 import asyncio
+import subprocess
+import shutil
+
+from uuid import UUID
 from datetime import datetime, timezone
 from typing import List, Dict, Any
 from google import genai
 from google.genai import types
 from sqlmodel import Session
+
 from app.config import settings
 from app.tools.registry import ToolRegistry
 from app.engine.sandbox import SandboxManager
@@ -14,26 +19,21 @@ from app.engine.prompts import SYSTEM_PROMPT
 from app.models.schemas import AgentRun, AgentStep, RunStatus, StepType
 
 class AgentRuntime:
-    def __init__(self, repo_path: str, bug_report: str, db: Session, max_iterations: int = 15):
+    def __init__(self, run_id: UUID, db: Session, max_iterations: int = 15):
         self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
         self.sandbox = SandboxManager()
         self.registry = ToolRegistry(self.sandbox)
         self.db = db
         self.max_iterations = max_iterations
-        self.repo_path = repo_path
 
-        self.run_record = AgentRun(
-            repo_name=repo_path.split("/")[-1] if "/" in repo_path else repo_path.split("\\")[-1],
-            issue_description=bug_report,
-            status=RunStatus.RUNNING,
-            created_at = datetime.now(timezone.utc)
-        )
-        self.db.add(self.run_record)
+        self.run_record = self.db.get(AgentRun, run_id)
+        self.run_record.status = RunStatus.RUNNING
         self.db.commit()
-        self.db.refresh(self.run_record)
+        
+        self.repo_path = self.run_record.repo_name
         
         self.messages: List[Dict[str, str]] = [
-            {"role": "user", "content": bug_report}
+            {"role": "user", "content": self.run_record.issue_description}
         ]
         self.step_count = 0
         self.action_history = []
@@ -77,11 +77,20 @@ class AgentRuntime:
                 print(f"⚠️ API error ({str(e)}), backing off for {sleep_time} seconds...")
                 time.sleep(sleep_time)
 
+        raw_text = response.text.strip()
+        if raw_text.startswith("```json"):
+            raw_text = raw_text[7:]
+        elif raw_text.startswith("```"):
+            raw_text = raw_text[3:]
+        if raw_text.endswith("```"):
+            raw_text = raw_text[:-3]
+        raw_text = raw_text.strip()
+
         try:
-            decision = json.loads(response.text)
-            self.messages.append({"role": "model", "content": response.text})
-        except json.JSONDecodeError:
-            return self._fail_run(f"Agent generated invalid JSON: {response.text}")
+            decision = json.loads(raw_text)
+            self.messages.append({"role": "model", "content": raw_text})
+        except json.JSONDecodeError as e:
+            return self._fail_run(f"Agent generated invalid JSON: {raw_text}\nParse Error: {str(e)}")
 
         tool_name = decision.get("tool_name")
         tool_args = decision.get("tool_arguments", {})
@@ -139,8 +148,28 @@ class AgentRuntime:
         try:
             while True: 
                 step_result = await asyncio.to_thread(self.step)
+                
+                if step_result.get("status") == "finished":
+                    try:
+                        diff_process = subprocess.run(
+                            ["git", "diff"], 
+                            cwd=self.repo_path, 
+                            capture_output=True, 
+                            text=True
+                        )
+                        step_result["patch"] = diff_process.stdout
+                    except Exception as e:
+                        step_result["patch"] = f"Failed to generate patch: {str(e)}"
+
                 yield step_result
+                
                 if step_result["status"] in ("finished", "error"):
                     break
         finally:
             self.sandbox.stop_container()
+            if "workspaces/run_" in self.repo_path or "workspaces\\run_" in self.repo_path:
+                try:
+                    shutil.rmtree(self.repo_path, ignore_errors=True)
+                    print(f"Garbage Collection: Successfully deleted ephemeral workspace {self.repo_path}")
+                except Exception as e:
+                    print(f"Garbage Collection Failed for {self.repo_path}: {str(e)}")

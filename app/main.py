@@ -103,28 +103,25 @@ def get_run(run_id: UUID, db: Session = Depends(get_session)):
 async def stream_run(run_id: UUID, db: Session = Depends(get_session)):
   run = db.get(AgentRun, run_id)
   if not run:
-    raise HTTPException(status_code=404, detail="Run not found")
+      raise HTTPException(status_code=404, detail="Run not found")
 
   async def event_generator():
-    agent = AgentRuntime(
-      repo_path=run.repo_name,
-      bug_report=run.issue_description,
-      db=db
-    )
+      agent = AgentRuntime(
+          run_id=run_id,
+          db=db
+      )
 
-    agent.run_record = run
-
-    async for step in agent.run_stream():
-      payload = json.dumps(step)
-      yield f"data: {payload}\n\n"
-      await asyncio.sleep(0.05)
+      async for step in agent.run_stream():
+          payload = json.dumps(step)
+          yield f"data: {payload}\n\n"
+          await asyncio.sleep(0.05)
 
   return StreamingResponse(
-    event_generator(),
-    media_type="text/event-stream",
-    headers={
-      "Cache-Control": "no-cache",
-      "Connection": "keep-alive",
-      "Content-Type": "text/event-stream"
-    } 
+      event_generator(),
+      media_type="text/event-stream",
+      headers={
+          "Cache-Control": "no-cache",
+          "Connection": "keep-alive",
+          "Content-Type": "text/event-stream"
+      } 
   )
