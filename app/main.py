@@ -1,6 +1,10 @@
 import json
 import asyncio
 import os
+import subprocess
+import shutil
+import uuid
+
 from typing import List
 from uuid import UUID
 from contextlib import asynccontextmanager
@@ -55,13 +59,28 @@ def health_check():
 
 @app.post("/api/runs", response_model=RunResponse, status_code=status.HTTP_201_CREATED)
 def create_run(request: CreateRunRequests, db: Session = Depends(get_session)):
-  BASE_DIR = Path(__file__).resolve().parent.parent
-
-  target_path = (BASE_DIR / request.repo_path).resolve()
+  if request.repo_path.startswith("http://") or request.repo_path.startswith("https://"):
+      run_uuid = uuid.uuid4()
+      workspace_dir = Path(f"./workspaces/run_{run_uuid}").resolve()
+      workspace_dir.mkdir(parents=True, exist_ok=True)
+      
+      try:
+          print(f"Cloning {request.repo_path} into {workspace_dir}...")
+          subprocess.run(
+              ["git", "clone", request.repo_path, str(workspace_dir)], 
+              check=True, capture_output=True, text=True
+          )
+          target_path = workspace_dir
+      except subprocess.CalledProcessError as e:
+          shutil.rmtree(workspace_dir, ignore_errors=True)
+          raise HTTPException(status_code=400, detail=f"Failed to clone repository: {e.stderr}")
+  else:
+      BASE_DIR = Path(__file__).resolve().parent.parent
+      target_path = (BASE_DIR / request.repo_path).resolve()
 
   run = AgentRun(
-    repo_name=str(target_path),
-    issue_description=request.issue_description
+      repo_name=str(target_path),
+      issue_description=request.issue_description
   )
   db.add(run)
   db.commit()
